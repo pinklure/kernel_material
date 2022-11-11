@@ -1,0 +1,77 @@
+# Kernel Source Download
+1. HTTP https://www.kernel.org/pub/
+2. GIT https://git.kernel.org/
+3. RSYNC rsync://rsync.kernel.org/pub/
+4. Run 'fetch-kernel.sh' provided by By Curar 2020r.
+
+# Compile Linux Kernel
+Get into top directory of the kernel source tree.
+Use `make ARCH=x86_64 defconfig` as default config or use `make ARCH=x86_64 menuconfig` with GUI to select options.
+Above command will create '.config' at current directory.
+Use `make kvmconfig` or `make kvm_guest.config` to modify '.config' to set up necessaties for it to run on QEMU.
+
+To add debug symbols, append below config to '.config'
+
+```conf
+# Coverage collection.
+CONFIG_KCOV=y
+
+# Debug info for symbolization.
+CONFIG_DEBUG_INFO=y
+
+# Memory bug detector
+CONFIG_KASAN=y
+CONFIG_KASAN_INLINE=y
+
+# Required for Debian Stretch
+CONFIG_CONFIGFS_FS=y
+CONFIG_SECURITYFS=y
+```
+
+Run `make olddefconfig` to regenerate the config with necessary modifications that the previous lines introduced.
+The run `make -j8` to start compilation.
+'bzImage' will be created at './arch/x86_64/boot/bzImage'.
+'vmlinux' will be created at './vmlinux'.
+
+# Create Basic Filesystem
+Install 'debootstrap' first.
+Run below script to create a debian-like environment with handy tools.
+
+'https://raw.githubusercontent.com/google/syzkaller/master/tools/create-image.sh'
+
+After executed this script, you will get a 'stretch.img' at current work directory.
+
+
+# Running The Kernel
+Run this handy QEMU launch script to boot up.
+
+```bash
+qemu-system-x86_64 \
+        -m 2G \
+        -smp 2 \
+        -kernel $1 \
+        -append "console=ttyS0 root=/dev/sda earlyprintk=serial net.ifnames=0 nokaslr" \
+        -drive file=$2,format=raw \
+        -net user,host=10.0.2.10,hostfwd=tcp:127.0.0.1:10021-:22 \
+        -net nic,model=e1000 \
+        -enable-kvm \
+        -nographic \
+        -pidfile vm.pid \
+        2>&1 | tee vm.log
+```
+
+'-kernel' is the path to 'bzImage'.
+'-drive' is followed by the path to 'stretch.img'.
+
+# Use GDB to Debug
+Append options '-s -S' to 'qemu-system-x86_64' command to debug with GDB.
+Look up QEMU man pages for detailed usages.
+
+Then open 'vmlinux' with gdb.
+Run `target remote localhost:1234` in GDB shell to attach.
+
+Connect with ssh if used syzkaller's script with
+```bash
+ssh -i image/stretch.id_rsa -p 10021 -o "StrictHostKeyChecking no" root@localhost
+```
+
